@@ -1,0 +1,662 @@
+b"""
+TP Deliverable 1, Ata Numanbayraktaroglu, anumanba, C
+Code Artifacts
+"""
+
+# events-example0.py
+# Barebones timer, mouse, and keyboard events
+
+from tkinter import *
+from tkinter.ttk import*
+import os, sys
+import copy
+
+####################################
+# customize these functions
+####################################
+
+import random
+
+def init(data):
+    data.maxNum = 3 #number of boxes on the board
+    data.board = createBoard(data) #makes a random board
+    data.visual = [] #the coordinates of the boxes for each perspective
+    data.margin = 25 #this sets margin to 25
+    data.cols = 8 #this sets cols to 8
+    data.rows = 8 #this sets rows to 8
+    data.perspective = "front"
+    data.player = [0,7,0] #location of the player
+    data.start = [0,7,0] #location for the starting box
+    data.end = data.board[-1] #location of the end box 
+    data.state = "splash" #the state of the game. helps with a lot of fucntions
+    data.count = 1 #count also helps for lots of functions
+    data.trans = [[0,0]] * len(data.board) #the transitions when prespective change
+    data.shift = "still" 
+    data.win = False
+    data.char = "ida"
+    data.numMoves = 0
+
+def createBoard(data):
+    result = callWithLargeStack(createBoard1, data)
+    return result
+
+def createBoard1(data, board=[[0,7,0]]): #creates board
+    laststep = board[-1]
+    if len(board) > data.maxNum: #if the board is sufficinetly big enough
+        return board
+    line = random.randint(1,3) #length of block
+    place = random.randint(0,2) #chooses x, y or z randomly
+    s = [0,1,2] 
+    s.remove(place) 
+    other = random.choice(s) #chooses x, y or z randomly but without the one chosen before
+    rando = laststep[other] 
+    item = laststep[place] 
+    randint = random.randint(0,7) 
+    if place == 1: 
+        if other == 0:
+            for step in range(line):
+                if item-1 <0:
+                    break
+                else:
+                    if [randint,item-1,laststep[2]] not in board:
+                        board.append([ randint, item-1, laststep[2]])
+        #basic format for the next couple lines are the same
+        #place is the coordinate which i add 1 or subtract one from 
+        #to ensure that the player can go from one block to the next one
+        #the second coordinate chosen is the one that is randomized
+        #the last coordinate does not change. 
+        #if the coordinates are not already in data.board, they are added. 
+        #this process repeates recursively until the number of boxes meets data.maxNum
+        if other == 2:
+            for step in range(line):
+                if item-1 <0:
+                    break
+                else:
+                    if [laststep[0], item-1, randint] not in board:
+                        board.append([laststep[0], item-1, randint])
+    if place == 0:
+        if other == 1:
+            for step in range(line):
+                if item+1 >7:
+                    break
+                else:
+                    if [item+1,randint, laststep[2]] not in board:
+                        board.append([item+1,randint, laststep[2]])
+        if other == 2:
+            for step in range(line):
+                if item+1 > 7:
+                    break
+                else:
+                    if [item+1, laststep[1], randint] not in board:
+                        board.append([item+1, laststep[1], randint])
+    if place == 2:
+        if other==0:
+            for step in range(line):
+                if item+1 >7:
+                    break
+                else:
+                    if [randint,laststep[1], item+1] not in board:
+                        board.append([randint,laststep[1], item+1])   
+        if other ==1:
+            for step in range(line):
+                if item+1 >7:
+                    break
+                else:
+                    if [laststep[0], randint, item+1] not in board:
+                        board.append([laststep[0], randint, item+1])
+    return createBoard1(data, board)
+
+def callWithLargeStack(f,*args):
+    import sys
+    import threading
+    threading.stack_size(2**27)  # 64MB stack
+    sys.setrecursionlimit(2**27) # will hit 64MB stack limit first
+    # need new thread to get the redefined stack size
+    def wrappedFn(resultWrapper): resultWrapper[0] = f(*args)
+    resultWrapper = [None]
+    #thread = threading.Thread(target=f, args=args)
+    thread = threading.Thread(target=wrappedFn, args=[resultWrapper])
+    thread.start()
+    thread.join()
+    return resultWrapper[0]
+
+def mousePressed(event, data):
+    if data.state == "splash":
+        if event.x>150 and event.x<250:
+            if event.y>150 and event.y<200: #starts game when PLAY is clicked
+                data.state = "still"
+                data.board=createBoard(data)
+                data.visual = getCords(data)
+            if event.y>275 and event.y<325: #instructions come up when INSTRUCTIONS is clicked
+                data.state = "instructions"
+        if event.x>320 and event.x<380:
+            if event.y>340 and event.y<360:
+                data.state="options"
+    if data.state == "next":
+        if event.x>150 and event.x<250:
+            if event.y>150 and event.y<200: #goes on to next lvl when NEXT is clicked
+                data.maxNum += 5
+                data.board = createBoard(data)
+                data.player = [0,7,0]
+                data.start = [0,7,0]
+                data.end = data.board[-1]
+                data.state = "still"
+                data.perspective = "front"
+                data.trans = [[0,0]] * len(data.board)
+                data.count = 1
+                data.win = False
+                data.numMoves = 0
+                #reset all data
+    if data.state=="options":
+        if event.y>150 and event.y<170:
+            if event.x>130 and event.x<190:
+                data.char = "ida"
+            if event.x>230 and event.x<290:
+                data.char = "bird"
+
+
+
+#taken from notes
+def getCellBounds(row, col, data):
+    # aka "modelToView"
+    # returns (x0, y0, x1, y1) corners/bounding box of given cell in grid
+    gridWidth  = data.width - 2*data.margin
+    gridHeight = data.height - 2*data.margin
+    columnWidth = gridWidth / data.cols
+    rowHeight = gridHeight / data.rows
+    x0 = data.margin + col * columnWidth
+    x1 = data.margin + (col+1) * columnWidth
+    y0 = data.margin + row * rowHeight
+    y1 = data.margin + (row+1) * rowHeight
+    return (x0, y0, x1, y1)
+
+def keyPressed(event, data):
+    # use event.char and event.keysym
+    if data.state == "still": #changes perspectives
+        if data.perspective == "front":
+            if event.keysym == "Up":
+                data.perspective = "up"
+                data.oldvisual = data.visual
+                getTrans(data)
+                data.state = "moving"
+                data.shift = "f->u"
+            if event.keysym == "Right":
+                data.perspective = "right"
+                data.oldvisual = data.visual
+                getTrans(data)
+                data.state = "moving"
+                data.shift = "f->r"
+        if data.perspective == "up":
+            if event.keysym == "Right":
+                data.perspective = "right"
+                data.oldvisual = data.visual
+                getTrans(data)
+                data.state = "moving"
+                data.shift = "u->r"
+            if event.keysym == "Down":
+                data.perspective = "front"
+                data.oldvisual = data.visual
+                getTrans(data)
+                data.state = "moving"
+                data.shift = "u->f"
+        if data.perspective == "right":
+            if event.keysym == "Left":
+                data.perspective = "front"
+                data.oldvisual = data.visual
+                getTrans(data)
+                data.state = "moving"
+                data.shift = "r->f"
+            if event.keysym == "Up":
+                data.perspective = "up"
+                data.oldvisual = data.visual
+                getTrans(data)
+                data.state = "moving"
+                data.shift = "r->u"
+        if event.keysym == "a": #moves player
+            makeMove(data,[-1,0])
+        if event.keysym == "w":
+            makeMove(data,[0,-1])
+        if event.keysym == "d":
+            makeMove(data,[1,0])
+        if event.keysym == "s":
+            makeMove(data,[0,1])
+    if event.keysym == "q": #goes back to splash
+        data.state="splash"
+
+def makeMove(data,dirr): #moves the player
+    if isLegal(data,dirr):
+        movePlayer(data,dirr)
+
+def isLegal(data,dirr): #only if the move is legal
+    if data.perspective == "right":
+        x = data.player[2]
+        y = data.player[1]
+    if data.perspective == "front":
+        x = data.player[0]
+        y = data.player[1]
+    if data.perspective == "up":
+        x = data.player[0]
+        y = data.cols - data.player[2] - 1
+    x += dirr[0]
+    y += dirr[1]
+    if [x,y] in data.visual:
+        data.numMoves += 1
+        return True
+    else:
+        return False
+
+def movePlayer(data, dirr): #gets coordinates of the place the player is going
+    if data.perspective == "right":
+        data.player[2] += dirr[0]
+        data.player[1] += dirr[1]
+        for x in range(7,-1, -1):
+            if [x, data.player[1],data.player[2]] in data.board:
+                data.player[0] = x
+        if [dirr[0], dirr[1]] == data.endxy:
+            data.win = True
+    if data.perspective == "front":
+        data.player[0] += dirr[0]
+        data.player[1] += dirr[1]
+        for z in range(8):
+            if [data.player[0],data.player[1],z] in data.board:
+                data.player[2] = z
+        if [dirr[0], dirr[1]] == data.endxy:
+            data.win = True
+    if data.perspective == "up":
+        #print("dirr[0]", dirr[0])
+        data.player[0] += dirr[0]
+        data.player[2] -= dirr[1]
+        for y in range(7,-1, -1):
+            if [data.player[0], y, data.player[2]] in data.board:
+                data.player[1] = y
+        if [dirr[0], dirr[1]] == data.endxy:
+            data.win = True
+
+def getCords(data): #get coordinates of all boxes 
+    positions = []
+    if data.perspective == "front":
+        for box in data.board:
+            x = box[0]
+            y = box[1]
+            positions.append([x,y])
+            data.px = data.player[0] #coordinates of players
+            data.py = data.player[1]
+            data.startx = data.start[0] #coordinates of start
+            data.starty = data.start[1]
+            data.endx = data.end[0] #coordinates of end box
+            data.endy = data.end[1]
+    if data.perspective == "up":
+        for box in data.board:
+            x = box[0]
+            y = data.cols - box[2] - 1
+            positions.append([x,y])
+            data.px = data.player[0]
+            data.py = data.cols - data.player[2] - 1
+            data.startx = data.start[0]
+            data.starty = data.cols - data.start[2] - 1
+            data.endx = data.end[0]
+            data.endy = data.cols - data.end[2] -1
+    if data.perspective == "right":
+        for box in data.board:
+            x = box[2]
+            y = box[1]
+            positions.append([x,y])
+            data.px = data.player[2]
+            data.py = data.player[1]
+            data.startx = data.start[2]
+            data.starty = data.start[1]
+            data.endx = data.end[2]
+            data.endy = data.end[1]
+    data.endxy = [data.endx, data.endy]
+    return positions
+
+def getTrans(data): #gets the change in coordinates
+    data.mid = getCords(data)
+    data.trans = []
+    #print(data.visual)
+    for box in range(len(data.board)):
+        dx = data.mid[box][0] - data.oldvisual[box][0] #difference between original and target coordinate
+        dy = data.mid[box][1] - data.oldvisual[box][1]
+        data.dx = dx/10 #10 is the number of frames in which the boxes transition
+        data.dy = dy/10 #divide by 10 so the boxes fit at the end of the transition
+        data.trans.append([data.dx, data.dy])
+    #print("data.trans", data.trans)
+
+def timerFired(data):
+    if data.state == "moving":
+        if data.count == 1: #at the begining of the transition
+            data.trans0 = data.trans[data.count][0] #sets records
+            data.trans1 = data.trans[data.count][1]
+        data.count += 1 
+        if data.count == 10: #end of transition
+            data.state = "still"
+            data.count = 1
+            data.trans = [[0,0]] * len(data.board)
+            data.visual = getCords(data)
+            data.shift="still"
+    if data.state == "still": #gets coordinates to draw from
+        data.visual = getCords(data)
+    if data.numMoves == (2+data.maxNum):
+        data.state= "lost"
+    if (data.player == data.end): #checks if player reached target box
+        data.state = "next"
+
+def drawRed(canvas,data, count): #draws end box (use to be red)
+    (edx0, edy0, edx1, edy1) = getCellBounds(data.endy, data.endx, data)
+    diff = (edx1-edx0)/2
+    #print(data.trans[-1][1]*data.count*diff)
+    edx0 += data.trans[-1][0]*data.count*diff
+    edx1 += data.trans[-1][0]*data.count*diff
+    edy0 += data.trans[-1][1]*data.count*diff
+    edy1 += data.trans[-1][1]*data.count*diff
+    canvas.create_rectangle(edx0, edy0, edx1, edy1, fill="NavajoWhite3",outline="black")
+    canvas.create_rectangle(edx0+5,edy0+5,edx1-5,edy1-5, fill="NavajoWhite4")
+    canvas.create_rectangle(edx0+10,edy0+10,edx1-10,edy1-10, fill="NavajoWhite3")
+    canvas.create_rectangle(edx0+15,edy0+15,edx1-15,edy1-15, fill="NavajoWhite4")
+    canvas.create_text(edx0,edy0, text="END",fill="white", anchor=NW)
+    canvas.create_polygon([edx0,edy0],[edx1,edy0],[edx1+diff,edy0-diff],[edx0+diff,edy0-diff],fill="NavajoWhite3")
+    canvas.create_polygon([edx1,edy0],[edx1,edy1],[edx1+diff,edy1-diff],[edx1+diff,edy0-diff], fill="NavajoWhite3",outline="black")
+    canvas.create_line(edx0,edy0,edx0+diff,edy0-diff)
+    canvas.create_line(edx1,edy1,edx1+diff,edy1-diff)
+    canvas.create_line(edx1,edy1,edx1+diff,edy1-diff)
+    canvas.create_line(edx1,edy0,edx1,edy1)
+    canvas.create_line(edx0+diff,edy0-diff,edx1+diff,edy0-diff)
+    canvas.create_line(edx1,edy0,edx1+diff,edy0-diff)
+    #canvas.create_text(edx1,edy1,text=str(count),anchor=SE)
+
+def drawGreen(canvas,data, count): #draws start box (use to be green)
+    (stx0, sty0, stx1, sty1) = getCellBounds(data.starty, data.startx, data)
+    diff = (stx1-stx0)/2
+    stx0 += data.trans[count][0]*data.count
+    stx1 += data.trans[count][0]*data.count
+    sty0 += data.trans[count][1]*data.count
+    sty1 += data.trans[count][1]*data.count
+    canvas.create_rectangle(stx0, sty0, stx1, sty1, fill="AntiqueWhite2",outline="black")
+    canvas.create_polygon([stx0,sty0],[stx1,sty0],[stx1+diff,sty0-diff],[stx0+diff,sty0-diff],fill="AntiqueWhite2",outline="black")
+    canvas.create_polygon([stx1,sty0],[stx1,sty1],[stx1+diff,sty1-diff],[stx1+diff,sty0-diff], fill="AntiqueWhite2",outline="black")
+    canvas.create_line(stx0,sty0,stx0+diff,sty0-diff)
+    canvas.create_line(stx1,sty1,stx1+diff,sty1-diff)
+    canvas.create_line(stx1,sty1,stx1+diff,sty1-diff)
+    canvas.create_line(stx0+diff,sty0-diff,stx1+diff,sty0-diff)
+    canvas.create_line(stx1,sty0,stx1+diff,sty0-diff)
+    canvas.create_line(stx1,sty0,stx1,sty1)
+    canvas.create_text(stx0,sty0, text="START", anchor=NW)
+    #canvas.create_text(stx1,sty1,text=str(count),anchor=SE)
+
+def drawWhite(canvas,data,x,y, count): #draws normal boxes (use to be white)
+    (x0, y0, x1, y1) = getCellBounds(y, x, data)
+    diff = (x1-x0)/2
+    #print("white",data.trans[-1][1]*data.count*diff)
+    x0 += data.trans[count][0]*data.count*diff
+    x1 += data.trans[count][0]*data.count*diff
+    y0 += data.trans[count][1]*data.count*diff
+    y1 += data.trans[count][1]*data.count*diff
+    canvas.create_polygon([x0,y0],[x0,y1],[x0+diff,y1-diff],[x0+diff,y0-diff],fill="NavajoWhite2")
+    canvas.create_rectangle(x0, y0, x1, y1, fill="NavajoWhite2",outline="black")
+    canvas.create_rectangle(x0+diff, y0-diff, x1+diff, y1-diff, fill="NavajoWhite2", outline="NavajoWhite2")
+    canvas.create_polygon([x0,y0],[x0+diff,y0],[x0+diff,y0-diff],fill="NavajoWhite2")
+    canvas.create_polygon([x1,y1],[x1+diff,y1-diff],[x1,y1-diff],fill="NavajoWhite2")
+    canvas.create_line(x1,y0,x1+diff,y0-diff)
+    canvas.create_line(x1,y1,x1+diff,y1-diff)
+    canvas.create_line(x1+diff,y1-diff,x1+diff,y0-diff)
+    canvas.create_rectangle(x0, y0-(diff*2), x1, y1-(diff*2),outline="NavajoWhite2")
+    canvas.create_line(x0,y0,x0,y0-(diff*2))
+    canvas.create_line(x0,y0-(diff*2),x1,y0-(diff*2))
+    canvas.create_line(x1,y0,x1,y0-(diff*2))
+    canvas.create_line(x0,y0,x1,y0)
+    canvas.create_line(x0,y0,x0+diff,y0-diff)
+    canvas.create_line(x1,y0,x1,y1)
+    #canvas.create_text(x1,y1,text=str(count),anchor=SE)
+
+def drawPlus(canvas,data,x,y, count): #draws the boxes with another box on top of it because the art was a bit different for these
+    (x0, y0, x1, y1) = getCellBounds(y, x, data)
+    diff = (x1-x0)/2
+    #print("Plus",data.trans[-1][1]*data.count*diff)
+    x0 += data.trans[count][0]*data.count*diff
+    x1 += data.trans[count][0]*data.count*diff
+    y0 += data.trans[count][1]*data.count*diff
+    y1 += data.trans[count][1]*data.count*diff
+    canvas.create_polygon([x0,y0],[x0,y1],[x0+diff,y1-diff],[x0+diff,y0-diff],fill="NavajoWhite2")
+    canvas.create_rectangle(x0+diff, y0-diff, x1+diff, y1-diff, fill="NavajoWhite2", outline="NavajoWhite2")
+    canvas.create_rectangle(x0, y0, x1, y1, fill="NavajoWhite2",outline="black")
+    canvas.create_polygon([x0,y0],[x0+diff,y0],[x0+diff,y0-diff],fill="NavajoWhite2")
+    canvas.create_polygon([x1,y1],[x1+diff,y1-diff],[x1,y1-diff],fill="NavajoWhite2")
+    canvas.create_line(x0,y0,x0+diff,y0-diff)
+    canvas.create_line(x0+diff,y0-diff,x1+diff,y0-diff)
+    canvas.create_line(x1,y0,x1+diff,y0-diff)
+    canvas.create_line(x1,y1,x1+diff,y1-diff)
+    canvas.create_line(x1+diff,y1-diff,x1+diff,y0-diff)
+    canvas.create_line(x0,y0,x0+diff,y0-diff)
+    canvas.create_line(x1,y0,x1,y1)
+    #canvas.create_text(x1,y1,text=str(count),anchor=SE)
+
+def drawSplash(canvas,data): #draws the spalsh screen
+    canvas.create_text(200,100, text="Monument Plain", font="Times 30 bold italic")
+    canvas.create_rectangle(150,150,250,200)
+    canvas.create_text(200,175, text="Play", font="Times 20 bold italic")
+    canvas.create_text(200, 250, text="By Ata Numanbayraktaroglu")
+    canvas.create_rectangle(150,275,250,325)
+    canvas.create_text(350,350,text="Options", font="Times 15 bold italic")
+    canvas.create_text(200,300,text="Instructions",font="Times 18 bold italic")
+    canvas.create_rectangle(320,340,380,360)
+
+def drawLines(canvas, data): #the lines around the board, makes visuals easier
+    s = data.count*40
+    if data.state=="still" or data.state=="next" or data.shift=="still":
+        canvas.create_line(5,5,5,400,fill="saddle brown",width=5)
+        canvas.create_line(0,400,400,400,fill="saddle brown",width=5)
+        canvas.create_line(400,0,400,405,fill="saddle brown",width=5)
+        canvas.create_line(400,5,0,5,fill="saddle brown",width=5)
+    if data.state=="moving":
+        if data.shift=="f->u":
+            canvas.create_line(5,0,5,405,fill="saddle brown",width=5)
+            canvas.create_line(400,0,400,405,fill="saddle brown",width=5)
+            canvas.create_line(0,400+s,400,400+s,fill="saddle brown",width=5)
+            canvas.create_line(400,5+s,0,5+s,fill="saddle brown",width=5)
+        if data.shift=="f->r":
+            canvas.create_line(5-s,5,5-s,400,fill="saddle brown",width=5)
+            canvas.create_line(0,400,400,400,fill="saddle brown",width=5)
+            canvas.create_line(405-s,0,405-s,405,fill="saddle brown",width=5)
+            canvas.create_line(400,5,0,5,fill="saddle brown",width=5)
+        if data.shift=="r->f":
+            canvas.create_line(5+s,5,5+s,400,fill="saddle brown",width=5)
+            canvas.create_line(0,400,400,400,fill="saddle brown",width=5)
+            canvas.create_line(405+s,0,405+s,405,fill="saddle brown",width=5)
+            canvas.create_line(400,5,0,5,fill="saddle brown",width=5)
+        if data.shift=="u->f":
+            canvas.create_line(5,5,5,400,fill="saddle brown",width=5)
+            canvas.create_line(0,400-s,400,400-s,fill="saddle brown",width=5)
+            canvas.create_line(405,0,405,405,fill="saddle brown",width=5)
+            canvas.create_line(400,5-s,0,5-s,fill="saddle brown",width=5)
+        if data.shift=="u->r":
+            canvas.create_line(5,5,5,400,fill="saddle brown",width=5)
+            canvas.create_line(0,400-s,400,400-s,fill="saddle brown",width=5)
+            canvas.create_line(405,0,405,405,fill="saddle brown",width=5)
+            canvas.create_line(400,5-s,0,5-s,fill="saddle brown",width=5)
+        if data.shift=="r->u":
+            canvas.create_line(5,0,5,405,fill="saddle brown",width=5)
+            canvas.create_line(400,0,400,405,fill="saddle brown",width=5)
+            canvas.create_line(0,400+s,400,400+s,fill="saddle brown",width=5)
+            canvas.create_line(400,5+s,0,5+s,fill="saddle brown",width=5)
+                
+def drawInstructions(canvas,data): #instrucion page
+    canvas.create_text(200,75,text="Instructions", font="55")
+    canvas.create_text(150,200, text="""
+                                This game is based off the phone game Monument Valley, 
+                                hence the name Monument Plain. However, the game play 
+                                is very different. The board is a big cube, and the 
+                                player is only able to see one side of the cube at a 
+                                given time.The cube contains smaller boxes inside which 
+                                the player is able to walk on. Depending on which side of
+                                the cube the player is looking at, the orientation of the 
+                                boxes will change. Players can change their perspective 
+                                using the arrow keys and move around using ASDW. There are
+                                a limited number of moves per level and once the player has
+                                reached the max number of moves, GAME OVER. Good luck!
+                                Press Q to return to the splash screen. 
+                                """)
+
+def drawPlayer(canvas, data): #draws player based on perspective
+    (x, y, px1, py1) = getCellBounds(data.py, data.px, data)
+    if data.char == "ida":
+        if data.perspective == "front":    
+            canvas.create_polygon([x+12.5,y+4],[x+20.5,y+6.5],[x+17.5,y+19])
+            canvas.create_oval(x+17,y+7,x+24,y+14, fill="white", outline="black")
+            canvas.create_polygon([x+0,y+2],[x+20,y+6],[x+15,y+10],fill="white",outline="black")
+            canvas.create_polygon([x+17.5,y+15],[x+17.5,y+40],[x+20,y+40],[x+19,y+37],[x+19,y+35],fill="white",outline="black")
+            canvas.create_polygon([x+12.5,y+28],[x+12.5,y+40],[x+15,y+40],[x+14,y+37],[x+14,y+35],fill="white",outline="black")
+            canvas.create_polygon([x+18,y+17],[x+19,y+17],[x+24,y+32],[x+7.5,y+27],fill="white",outline="black")
+        if data.perspective == "right":
+            canvas.create_polygon([x+14,y+15],[x+17,y+20],[x+21,y+15])
+            canvas.create_oval(x+14,y+10,x+21,y+17, fill="white", outline="black")
+            canvas.create_polygon([x+17,y+2],[x+14,y+10],[x+21,y+10],fill="white",outline="black")
+            canvas.create_polygon([x+17.5,y+28],[x+17.5,y+40],[x+20,y+40],[x+19,y+37],[x+19,y+35],fill="white",outline="black")
+            canvas.create_polygon([x+12.5,y+28],[x+12.5,y+40],[x+15,y+40],[x+14,y+37],[x+14,y+35],fill="white",outline="black")
+            canvas.create_polygon([x+18,y+17],[x+16,y+17],[x+24,y+32],[x+7.5,y+32],fill="white",outline="black")
+        if data.perspective == "up":
+            canvas.create_oval(x+5,y+10,x+25,y+30, fill="white")
+            canvas.create_polygon([x+11,y+20],[x+19,y+20],[x+15,y+24], fill="black")
+            canvas.create_rectangle(x+11,y+17,x+19,y+20, fill="black")
+            canvas.create_oval(x+11,y+15,x+19,y+19, fill="white", outline="black")
+            canvas.create_polygon([x+11,y+21],[x+19,y+21],[x+15,y+35], fill="white", outline="black")
+    if data.char == "bird":
+        if data.perspective == "front":
+            canvas.create_oval(x+7,y+3,x+17,y+13, fill="black")
+            canvas.create_polygon([x+14,y+3],[x+14,y+13],[x+32,y+10], fill="black")
+            canvas.create_rectangle(x+10,y+10,x+13,y+17, fill="black")
+            canvas.create_polygon([x+10,y+17],[x+13,y+17],[x+20,y+30],[x+3,y+30], fill="black", outline="black")
+            canvas.create_polygon([x+7,y+21],[x+9,y+21],[x+9,y+35],[x+11,y+37],[x+7,y+37])
+            canvas.create_polygon([x+13,y+21],[x+15,y+21],[x+15,y+35],[x+17,y+37],[x+13,y+37])
+            canvas.create_oval(x+8,y+4,x+16,y+12, fill="white")
+            canvas.create_oval(x+10,y+6,x+14,y+10, fill="black")
+        if data.perspective == "right":
+            canvas.create_oval(x+10, y+3, x+24, y+17, fill="black")
+            canvas.create_oval(x+12,y+4,x+16,y+15, fill="white")
+            canvas.create_oval(x+19,y+4,x+23,y+15, fill="white")
+            canvas.create_oval(x+14, y+5,x+14,y+13)
+            canvas.create_oval(x+21,y+5, x+21,y+13)
+            canvas.create_rectangle(x+15,y+13,x+18,y+20, fill="black")
+            canvas.create_polygon([x+15,y+20],[x+18,y+20],[x+25,y+33],[x+8,y+33], fill="black", outline="black")
+            canvas.create_polygon([x+12,y+24],[x+14,y+23],[x+14,y+35],[x+16,y+37],[x+12,y+37])
+            canvas.create_polygon([x+18,y+24],[x+20,y+23],[x+20,y+35],[x+22,y+37],[x+18,y+37])
+        if data.perspective == "up":
+            canvas.create_oval(x+5,y+20,x+20,y+35, fill="black")
+            canvas.create_polygon([x+5,y+26.5],[x+12.5,y+10],[x+20,y+26.5])
+            canvas.create_oval(x+7,y+22,x+12,y+33,fill="white")
+            canvas.create_oval(x+14,y+22,x+19,y+33,fill="white")
+            canvas.create_oval(x+8,y+21,x+11,y+32)
+            canvas.create_oval(x+15,y+21,x+18,y+32)
+
+def drawOptions(canvas, data):
+    canvas.create_text(200,75,text="Options", font="55")
+    canvas.create_text(200,125,text="Character", font="30")
+    if data.char == "ida":
+        canvas.create_rectangle(130,150,170,170,fill="red")
+        canvas.create_rectangle(230,150,270,170)
+    if data.char == "bird":
+        canvas.create_rectangle(130,150,170,170)
+        canvas.create_rectangle(230,150,270,170,fill="red")
+    canvas.create_text(150,160,text="Ida", font="25")
+    canvas.create_text(250,160,text="Crow", font="25")
+
+def drawLost(canvas, data):
+    canvas.create_rectangle(145,145,255,205, fill="white", outline="black", width=3)
+    canvas.create_text(200,175,text="Oh no! You made \n too many moves!" + "\n" + "GAME OVER")
+
+def redrawAll(canvas, data):
+    canvas.create_rectangle(-10,-10,450,450,fill="seashell2")
+    if data.state == "still" or data.state == "moving" or data.state=="next" or data.state=="lost":    
+        count=0
+        if data.state=="still" or data.state=="next" or data.state=="lost":
+            for x in range(data.rows):
+                for y in range(data.cols,-1,-1):
+                    if [x,y] in data.visual:
+                        if [x,y]==[data.startx, data.starty]:
+                            drawGreen(canvas,data,count)
+                        elif [x,y]==[data.endx,data.endy]:
+                            drawRed(canvas,data, count)
+                        elif [x,y-1] in data.visual:
+                            drawWhite(canvas,data,x,y, count)
+                        else:
+                            drawPlus(canvas,data,x,y, count)
+                        if [x,y]==[data.px,data.py]:
+                            drawPlayer(canvas, data)
+                        count+=1
+        if data.state=="moving":
+            for box in data.visual:
+                x = box[0]
+                y = box[1]
+                if [x,y]==[data.startx, data.starty]:
+                    drawGreen(canvas,data,count)
+                elif [x,y]==[data.endx,data.endy]:
+                    drawRed(canvas,data, count)
+                elif data.state=="moving":
+                    drawPlus(canvas,data,x,y, count)
+                elif [x,y-1] in data.visual:
+                    drawWhite(canvas,data,x,y, count)
+                else:
+                    drawPlus(canvas,data,x,y, count)
+                if [x,y]==[data.px,data.py]:
+                    drawPlayer(canvas, data)
+                count+=1
+        canvas.create_text(55,15, text=str(data.perspective))
+    if data.state == "splash":
+        drawSplash(canvas,data)
+    if data.state == "next":
+        canvas.create_rectangle(150,150,250,200, fill="white", outline="black", width=4)
+        canvas.create_text(200,175,text="Next Level?")
+    if data.state== "instructions":
+        drawInstructions(canvas,data)
+    if data.state=="options":
+        drawOptions(canvas,data)
+    if data.state=="lost":
+        drawLost(canvas, data)
+    if data.state=="still" or data.state=="next":
+        canvas.create_rectangle(320,10,395,50)
+        canvas.create_text(360,30,text="Moves Left:\n"+"          "+str(data.maxNum+2 - data.numMoves))
+    drawLines(canvas, data)
+###################################
+# use the run function as-is
+####################################
+
+def run(width=300, height=300):
+    def redrawAllWrapper(canvas, data):
+        canvas.delete(ALL)
+        redrawAll(canvas, data)
+        canvas.update()    
+
+    def mousePressedWrapper(event, canvas, data):
+        mousePressed(event, data)
+        redrawAllWrapper(canvas, data)
+
+    def keyPressedWrapper(event, canvas, data):
+        keyPressed(event, data)
+        redrawAllWrapper(canvas, data)
+
+    def timerFiredWrapper(canvas, data):
+        timerFired(data)
+        redrawAllWrapper(canvas, data)
+        # pause, then call timerFired again
+        canvas.after(data.timerDelay, timerFiredWrapper, canvas, data)
+    # Set up data and call init
+    class Struct(object): pass
+    data = Struct()
+    data.width = width
+    data.height = height
+    data.timerDelay = 100 # milliseconds
+    init(data)
+    # create the root and the canvas
+    root = Tk()
+    canvas = Canvas(root, width=data.width, height=data.height)
+    canvas.pack()
+    # set up events
+    root.bind("<Button-1>", lambda event:
+                            mousePressedWrapper(event, canvas, data))
+    root.bind("<Key>", lambda event:
+                            keyPressedWrapper(event, canvas, data))
+    timerFiredWrapper(canvas, data)
+    # and launch the app
+    root.mainloop()  # blocks until window is closed
+    print("bye!")
+
+run(400, 400)
